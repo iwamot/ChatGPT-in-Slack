@@ -1,7 +1,7 @@
 import threading
 import time
 import re
-from typing import List, Dict, Any, Generator, Tuple
+from typing import List, Dict, Any, Generator, Tuple, Optional
 
 import openai
 from openai.error import Timeout
@@ -78,10 +78,10 @@ def start_receiving_openai_response(
     temperature: float,
     messages: List[Dict[str, str]],
     user: str,
-    openai_api_type: str,
+    openai_api_type: Optional[str],
     openai_api_base: str,
-    openai_api_version: str,
-    openai_deployment_id: str,
+    openai_api_version: Optional[str],
+    openai_deployment_id: Optional[str],
 ) -> Generator[OpenAIObject, Any, None]:
     return openai.ChatCompletion.create(
         api_key=openai_api_key,
