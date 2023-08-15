@@ -19,6 +19,7 @@ from app.openai_ops import (
     consume_openai_stream_to_write_reply,
     build_system_text,
     messages_within_context_window,
+    calculate_prompt_tokens_used_by_function_call,
 )
 from app.slack_ops import (
     find_parent_message,
@@ -125,11 +126,30 @@ def respond_to_app_mention(
             user=context.user_id,
         )
 
+        prompt_tokens_used_by_function_call = None
+        if context["OPENAI_FUNCTION_CALL_MODULE_NAME"] is not None:
+            prompt_tokens_used_by_function_call = (
+                calculate_prompt_tokens_used_by_function_call(
+                    openai_api_key=context["OPENAI_API_KEY"],
+                    model=context["OPENAI_MODEL"],
+                    openai_api_type=context["OPENAI_API_TYPE"],
+                    openai_api_base=context["OPENAI_API_BASE"],
+                    openai_api_version=context["OPENAI_API_VERSION"],
+                    openai_deployment_id=context["OPENAI_DEPLOYMENT_ID"],
+                    function_call_module_name=context[
+                        "OPENAI_FUNCTION_CALL_MODULE_NAME"
+                    ],
+                )
+            )
         (
             messages,
             num_context_tokens,
             max_context_tokens,
-        ) = messages_within_context_window(messages, model=context["OPENAI_MODEL"])
+        ) = messages_within_context_window(
+            messages,
+            model=context["OPENAI_MODEL"],
+            prompt_tokens_used_by_function_call=prompt_tokens_used_by_function_call,
+        )
         num_messages = len([msg for msg in messages if msg.get("role") != "system"])
         if num_messages == 0:
             update_wip_message(
@@ -151,6 +171,7 @@ def respond_to_app_mention(
                 openai_api_base=context["OPENAI_API_BASE"],
                 openai_api_version=context["OPENAI_API_VERSION"],
                 openai_deployment_id=context["OPENAI_DEPLOYMENT_ID"],
+                function_call_module_name=context["OPENAI_FUNCTION_CALL_MODULE_NAME"],
             )
             consume_openai_stream_to_write_reply(
                 client=client,
@@ -161,6 +182,7 @@ def respond_to_app_mention(
                 stream=stream,
                 timeout_seconds=OPENAI_TIMEOUT_SECONDS,
                 translate_markdown=TRANSLATE_MARKDOWN,
+                prompt_tokens_used_by_function_call=prompt_tokens_used_by_function_call,
             )
 
     except Timeout:
@@ -342,11 +364,30 @@ def respond_to_new_message(
             user=user_id,
         )
 
+        prompt_tokens_used_by_function_call = None
+        if context["OPENAI_FUNCTION_CALL_MODULE_NAME"] is not None:
+            prompt_tokens_used_by_function_call = (
+                calculate_prompt_tokens_used_by_function_call(
+                    openai_api_key=context["OPENAI_API_KEY"],
+                    model=context["OPENAI_MODEL"],
+                    openai_api_type=context["OPENAI_API_TYPE"],
+                    openai_api_base=context["OPENAI_API_BASE"],
+                    openai_api_version=context["OPENAI_API_VERSION"],
+                    openai_deployment_id=context["OPENAI_DEPLOYMENT_ID"],
+                    function_call_module_name=context[
+                        "OPENAI_FUNCTION_CALL_MODULE_NAME"
+                    ],
+                )
+            )
         (
             messages,
             num_context_tokens,
             max_context_tokens,
-        ) = messages_within_context_window(messages, model=context["OPENAI_MODEL"])
+        ) = messages_within_context_window(
+            messages,
+            model=context["OPENAI_MODEL"],
+            prompt_tokens_used_by_function_call=prompt_tokens_used_by_function_call,
+        )
         num_messages = len([msg for msg in messages if msg.get("role") != "system"])
         if num_messages == 0:
             update_wip_message(
@@ -368,6 +409,7 @@ def respond_to_new_message(
                 openai_api_base=context["OPENAI_API_BASE"],
                 openai_api_version=context["OPENAI_API_VERSION"],
                 openai_deployment_id=context["OPENAI_DEPLOYMENT_ID"],
+                function_call_module_name=context["OPENAI_FUNCTION_CALL_MODULE_NAME"],
             )
 
             latest_replies = client.conversations_replies(
@@ -396,6 +438,7 @@ def respond_to_new_message(
                 stream=stream,
                 timeout_seconds=OPENAI_TIMEOUT_SECONDS,
                 translate_markdown=TRANSLATE_MARKDOWN,
+                prompt_tokens_used_by_function_call=prompt_tokens_used_by_function_call,
             )
 
     except Timeout:
