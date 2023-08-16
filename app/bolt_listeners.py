@@ -129,17 +129,7 @@ def respond_to_app_mention(
         prompt_tokens_used_by_function_call = None
         if context["OPENAI_FUNCTION_CALL_MODULE_NAME"] is not None:
             prompt_tokens_used_by_function_call = (
-                calculate_prompt_tokens_used_by_function_call(
-                    openai_api_key=context["OPENAI_API_KEY"],
-                    model=context["OPENAI_MODEL"],
-                    openai_api_type=context["OPENAI_API_TYPE"],
-                    openai_api_base=context["OPENAI_API_BASE"],
-                    openai_api_version=context["OPENAI_API_VERSION"],
-                    openai_deployment_id=context["OPENAI_DEPLOYMENT_ID"],
-                    function_call_module_name=context[
-                        "OPENAI_FUNCTION_CALL_MODULE_NAME"
-                    ],
-                )
+                calculate_prompt_tokens_used_by_function_call(context)
             )
         (
             messages,
@@ -367,17 +357,7 @@ def respond_to_new_message(
         prompt_tokens_used_by_function_call = None
         if context["OPENAI_FUNCTION_CALL_MODULE_NAME"] is not None:
             prompt_tokens_used_by_function_call = (
-                calculate_prompt_tokens_used_by_function_call(
-                    openai_api_key=context["OPENAI_API_KEY"],
-                    model=context["OPENAI_MODEL"],
-                    openai_api_type=context["OPENAI_API_TYPE"],
-                    openai_api_base=context["OPENAI_API_BASE"],
-                    openai_api_version=context["OPENAI_API_VERSION"],
-                    openai_deployment_id=context["OPENAI_DEPLOYMENT_ID"],
-                    function_call_module_name=context[
-                        "OPENAI_FUNCTION_CALL_MODULE_NAME"
-                    ],
-                )
+                calculate_prompt_tokens_used_by_function_call(context)
             )
         (
             messages,
