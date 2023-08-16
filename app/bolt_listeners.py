@@ -126,20 +126,11 @@ def respond_to_app_mention(
             user=context.user_id,
         )
 
-        prompt_tokens_used_by_function_call = None
-        if context["OPENAI_FUNCTION_CALL_MODULE_NAME"] is not None:
-            prompt_tokens_used_by_function_call = (
-                calculate_prompt_tokens_used_by_function_call(context)
-            )
         (
             messages,
             num_context_tokens,
             max_context_tokens,
-        ) = messages_within_context_window(
-            messages,
-            model=context["OPENAI_MODEL"],
-            prompt_tokens_used_by_function_call=prompt_tokens_used_by_function_call,
-        )
+        ) = messages_within_context_window(messages, context=context)
         num_messages = len([msg for msg in messages if msg.get("role") != "system"])
         if num_messages == 0:
             update_wip_message(
@@ -172,7 +163,6 @@ def respond_to_app_mention(
                 stream=stream,
                 timeout_seconds=OPENAI_TIMEOUT_SECONDS,
                 translate_markdown=TRANSLATE_MARKDOWN,
-                prompt_tokens_used_by_function_call=prompt_tokens_used_by_function_call,
             )
 
     except Timeout:
@@ -354,20 +344,11 @@ def respond_to_new_message(
             user=user_id,
         )
 
-        prompt_tokens_used_by_function_call = None
-        if context["OPENAI_FUNCTION_CALL_MODULE_NAME"] is not None:
-            prompt_tokens_used_by_function_call = (
-                calculate_prompt_tokens_used_by_function_call(context)
-            )
         (
             messages,
             num_context_tokens,
             max_context_tokens,
-        ) = messages_within_context_window(
-            messages,
-            model=context["OPENAI_MODEL"],
-            prompt_tokens_used_by_function_call=prompt_tokens_used_by_function_call,
-        )
+        ) = messages_within_context_window(messages, context=context)
         num_messages = len([msg for msg in messages if msg.get("role") != "system"])
         if num_messages == 0:
             update_wip_message(
@@ -418,7 +399,6 @@ def respond_to_new_message(
                 stream=stream,
                 timeout_seconds=OPENAI_TIMEOUT_SECONDS,
                 translate_markdown=TRANSLATE_MARKDOWN,
-                prompt_tokens_used_by_function_call=prompt_tokens_used_by_function_call,
             )
 
     except Timeout:

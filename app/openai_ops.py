@@ -3,7 +3,6 @@ import time
 import re
 import importlib
 from typing import List, Dict, Any, Generator, Tuple, Optional, Union
-from types import ModuleType
 
 import openai
 from openai.error import Timeout
@@ -54,17 +53,16 @@ def format_openai_message_content(content: str, translate_markdown: bool) -> str
 
 def messages_within_context_window(
     messages: List[Dict[str, Union[str, Dict[str, str]]]],
-    model: str,
-    prompt_tokens_used_by_function_call: Optional[int],
+    context: BoltContext,
 ) -> Tuple[List[Dict[str, Union[str, Dict[str, str]]]], int, int]:
     # Remove old messages to make sure we have room for max_tokens
     # See also: https://platform.openai.com/docs/guides/chat/introduction
     # > total tokens must be below the model’s maximum limit (e.g., 4096 tokens for gpt-3.5-turbo-0301)
-    max_context_tokens = context_length(model) - MAX_TOKENS - 1
+    max_context_tokens = context_length(context.get("OPENAI_MODEL")) - MAX_TOKENS - 1
     num_context_tokens = 0  # Number of tokens in the context window just before the earliest message is deleted
     deletable_message_roles = ("user", "assistant")
-    if prompt_tokens_used_by_function_call is not None:
-        max_context_tokens -= prompt_tokens_used_by_function_call
+    if context.get("OPENAI_FUNCTION_CALL_MODULE_NAME") is not None:
+        max_context_tokens -= calculate_prompt_tokens_used_by_function_call(context)
         deletable_message_roles += ("function",)
     while (num_tokens := calculate_num_tokens(messages)) > max_context_tokens:
         removed = False
@@ -128,7 +126,6 @@ def consume_openai_stream_to_write_reply(
     stream: Generator[OpenAIObject, Any, None],
     timeout_seconds: int,
     translate_markdown: bool,
-    prompt_tokens_used_by_function_call: Optional[int],
 ):
     start_time = time.time()
     assistant_reply: Dict[str, Union[str, Dict[str, str]]] = {
@@ -201,7 +198,6 @@ def consume_openai_stream_to_write_reply(
                 timeout_seconds=timeout_seconds,
                 translate_markdown=translate_markdown,
                 function_call=function_call,
-                prompt_tokens_used_by_function_call=prompt_tokens_used_by_function_call,
             )
             return
 
@@ -409,7 +405,6 @@ def execute_function_call(
     timeout_seconds: int,
     translate_markdown: bool,
     function_call: Dict[str, str],
-    prompt_tokens_used_by_function_call: int,
 ) -> None:
     """Executes a function call and subsequently consults the model again."""
     import copy
@@ -456,11 +451,7 @@ def execute_function_call(
     else:
         function_call_module_name = None
 
-    (messages, _, _) = messages_within_context_window(
-        messages,
-        model=context.get("OPENAI_MODEL"),
-        prompt_tokens_used_by_function_call=prompt_tokens_used_by_function_call,
-    )
+    (messages, _, _) = messages_within_context_window(messages, context=context)
     stream = start_receiving_openai_response(
         openai_api_key=context.get("OPENAI_API_KEY"),
         model=context.get("OPENAI_MODEL"),
@@ -482,5 +473,4 @@ def execute_function_call(
         stream=stream,
         timeout_seconds=timeout_seconds,
         translate_markdown=translate_markdown,
-        prompt_tokens_used_by_function_call=prompt_tokens_used_by_function_call,
     )
