@@ -2,6 +2,7 @@ import threading
 import time
 import re
 import importlib
+import json
 from typing import List, Dict, Any, Generator, Tuple, Optional, Union
 
 import openai
@@ -126,7 +127,7 @@ def consume_openai_stream_to_write_reply(
     stream: Generator[OpenAIObject, Any, None],
     timeout_seconds: int,
     translate_markdown: bool,
-):
+) -> Optional[str]:
     start_time = time.time()
     assistant_reply: Dict[str, Union[str, Dict[str, str]]] = {
         "role": "assistant",
@@ -189,17 +190,40 @@ def consume_openai_stream_to_write_reply(
                 pass
 
         if function_call["name"] != "":
-            execute_function_call(
-                client=client,
-                wip_reply=wip_reply,
-                context=context,
-                user_id=user_id,
-                messages=messages,
-                timeout_seconds=timeout_seconds,
-                translate_markdown=translate_markdown,
-                function_call=function_call,
+            assistant_reply["function_call"] = function_call
+
+            # Check for repeated function calls to prevent infinite loops
+            for message in reversed(messages[:-1]):
+                if message.get("role") == "user":
+                    break
+                elif (
+                    message.get("role") == "assistant"
+                    and (f := message.get("function_call")) is not None
+                    and isinstance(f, dict)
+                    and f.get("name") == function_call["name"]
+                    and f.get("arguments") == function_call["arguments"]
+                ):
+                    return None
+
+            function_call_module_name = context.get("OPENAI_FUNCTION_CALL_MODULE_NAME")
+            function_call_module = importlib.import_module(function_call_module_name)
+
+            # Note that the model may generate invalid JSON or hallucinate parameters
+            try:
+                function_to_call = getattr(function_call_module, function_call["name"])
+                function_args = json.loads(function_call["arguments"])
+                function_response = function_to_call(**function_args)
+            except Exception:
+                return None
+
+            messages.append(
+                {
+                    "role": "function",
+                    "name": function_call["name"],
+                    "content": function_response,
+                }
             )
-            return
+            return function_call_module_name
 
         assistant_reply_text = format_assistant_reply(
             assistant_reply["content"], translate_markdown
@@ -394,83 +418,3 @@ def calculate_prompt_tokens_used_by_function_call(context: BoltContext) -> int:
             create_chat_completion(module.functions) - create_chat_completion()
         )
     return _prompt_tokens_used_by_function_call_cache
-
-
-def execute_function_call(
-    client: WebClient,
-    wip_reply: dict,
-    context: BoltContext,
-    user_id: str,
-    messages: List[Dict[str, Union[str, Dict[str, str]]]],
-    timeout_seconds: int,
-    translate_markdown: bool,
-    function_call: Dict[str, str],
-) -> None:
-    """Executes a function call and subsequently consults the model again."""
-    import copy
-    import json
-
-    # Clone the messages so that other streams are not affected by the changes here
-    messages = copy.deepcopy(messages)
-
-    # To avoid infinite loops, check that the same function call has not already been executed
-    should_execute_function_call = True
-    for message in reversed(messages):
-        if message.get("role") == "user":
-            break
-        elif (
-            message.get("role") == "assistant"
-            and (f := message.get("function_call")) is not None
-            and isinstance(f, dict)
-            and f.get("name") == function_call["name"]
-            and f.get("arguments") == function_call["arguments"]
-        ):
-            should_execute_function_call = False
-            break
-
-    assistant_reply = messages[-1]
-    assistant_reply["function_call"] = function_call
-
-    function_call_module_name = context.get("OPENAI_FUNCTION_CALL_MODULE_NAME")
-    if should_execute_function_call:
-        function_call_module = importlib.import_module(function_call_module_name)
-        # Note that the model may generate invalid JSON or hallucinate parameters
-        try:
-            function_to_call = getattr(function_call_module, function_call["name"])
-            function_args = json.loads(function_call["arguments"])
-            function_response = function_to_call(**function_args)
-            messages.append(
-                {
-                    "role": "function",
-                    "name": function_call["name"],
-                    "content": function_response,
-                }
-            )
-        except Exception:
-            function_call_module_name = None
-    else:
-        function_call_module_name = None
-
-    (messages, _, _) = messages_within_context_window(messages, context=context)
-    stream = start_receiving_openai_response(
-        openai_api_key=context.get("OPENAI_API_KEY"),
-        model=context.get("OPENAI_MODEL"),
-        temperature=context.get("OPENAI_TEMPERATURE"),
-        messages=messages,
-        user=user_id,
-        openai_api_type=context.get("OPENAI_API_TYPE"),
-        openai_api_base=context.get("OPENAI_API_BASE"),
-        openai_api_version=context.get("OPENAI_API_VERSION"),
-        openai_deployment_id=context.get("OPENAI_DEPLOYMENT_ID"),
-        function_call_module_name=function_call_module_name,
-    )
-    consume_openai_stream_to_write_reply(
-        client=client,
-        wip_reply=wip_reply,
-        context=context,
-        user_id=user_id,
-        messages=messages,
-        stream=stream,
-        timeout_seconds=timeout_seconds,
-        translate_markdown=translate_markdown,
-    )
