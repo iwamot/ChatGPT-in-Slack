@@ -61,14 +61,12 @@ def messages_within_context_window(
     # > total tokens must be below the model’s maximum limit (e.g., 4096 tokens for gpt-3.5-turbo-0301)
     max_context_tokens = context_length(context.get("OPENAI_MODEL")) - MAX_TOKENS - 1
     num_context_tokens = 0  # Number of tokens in the context window just before the earliest message is deleted
-    deletable_message_roles = ("user", "assistant")
     if context.get("OPENAI_FUNCTION_CALL_MODULE_NAME") is not None:
         max_context_tokens -= calculate_prompt_tokens_used_by_function_call(context)
-        deletable_message_roles += ("function",)
     while (num_tokens := calculate_num_tokens(messages)) > max_context_tokens:
         removed = False
         for i, message in enumerate(messages):
-            if message["role"] in deletable_message_roles:
+            if message["role"] in ("user", "assistant", "function"):
                 num_context_tokens = num_tokens
                 del messages[i]
                 removed = True
@@ -194,16 +192,10 @@ def consume_openai_stream_to_write_reply(
 
             # Check for repeated function calls to prevent infinite loops
             for message in reversed(messages[:-1]):
-                if message.get("role") == "user":
-                    break
-                elif (
-                    message.get("role") == "assistant"
-                    and (f := message.get("function_call")) is not None
-                    and isinstance(f, dict)
-                    and f.get("name") == function_call["name"]
-                    and f.get("arguments") == function_call["arguments"]
-                ):
+                if message.get("function_call") == function_call:
                     return
+                elif message.get("role") == "user":
+                    break
 
             function_call_module_name = context.get("OPENAI_FUNCTION_CALL_MODULE_NAME")
             function_call_module = importlib.import_module(function_call_module_name)

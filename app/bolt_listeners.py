@@ -19,7 +19,6 @@ from app.openai_ops import (
     consume_openai_stream_to_write_reply,
     build_system_text,
     messages_within_context_window,
-    calculate_prompt_tokens_used_by_function_call,
 )
 from app.slack_ops import (
     find_parent_message,
