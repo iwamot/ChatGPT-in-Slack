@@ -1,6 +1,7 @@
 import threading
 import time
 import re
+import importlib
 from typing import List, Dict, Any, Generator, Tuple, Optional, Union
 from types import ModuleType
 
@@ -92,13 +93,10 @@ def start_receiving_openai_response(
     openai_deployment_id: Optional[str],
     function_call_module_name: Optional[str],
 ) -> Generator[OpenAIObject, Any, None]:
-    function_call_kwargs = {}
+    functions = None
     if function_call_module_name is not None:
-        function_call_module = import_function_call_module(function_call_module_name)
-        function_call_kwargs = {
-            "functions": function_call_module.functions,
-            "function_call": function_call_module.function_call,
-        }
+        function_call_module = importlib.import_module(function_call_module_name)
+        functions = function_call_module.functions
     return openai.ChatCompletion.create(
         api_key=openai_api_key,
         model=model,
@@ -116,7 +114,7 @@ def start_receiving_openai_response(
         api_base=openai_api_base,
         api_version=openai_api_version,
         deployment_id=openai_deployment_id,
-        **function_call_kwargs,
+        **({"functions": functions} if functions is not None else {}),
     )
 
 
@@ -394,16 +392,9 @@ def calculate_prompt_tokens_used_by_function_call(
         return _prompt_tokens_used_by_function_call_cache.get(cache_key)
 
     # As the method to calculate the number of tokens is not clear yet, actual measurement is currently used
-    function_call_module = import_function_call_module(function_call_module_name)
-    function_call_kwargs_map = {
-        "with_function_call": {
-            "functions": function_call_module.functions,
-            "function_call": function_call_module.function_call,
-        },
-        "without_function_call": {},
-    }
-    prompt_tokens = {
-        k: openai.ChatCompletion.create(
+    function_call_module = importlib.import_module(function_call_module_name)
+    num_tokens_with_functions, num_tokens_without_functions = [
+        openai.ChatCompletion.create(
             api_key=openai_api_key,
             model=model,
             messages=[{"role": "user", "content": "hello"}],
@@ -419,27 +410,13 @@ def calculate_prompt_tokens_used_by_function_call(
             api_base=openai_api_base,
             api_version=openai_api_version,
             deployment_id=openai_deployment_id,
-            **function_call_kwargs,
+            **({"functions": functions} if functions is not None else {}),
         )["usage"]["prompt_tokens"]
-        for k, function_call_kwargs in function_call_kwargs_map.items()
-    }
-    num_tokens = (
-        prompt_tokens["with_function_call"] - prompt_tokens["without_function_call"]
-    )
+        for functions in [function_call_module.functions, None]
+    ]
+    num_tokens = num_tokens_with_functions - num_tokens_without_functions
     _prompt_tokens_used_by_function_call_cache[cache_key] = num_tokens
     return num_tokens
-
-
-def import_function_call_module(
-    function_call_module_name: str,
-) -> ModuleType:
-    """Imports the function call module and returns it."""
-    import importlib
-
-    module = importlib.import_module(function_call_module_name)
-    # The function_call property may not be defined in the module
-    module.function_call = getattr(module, "function_call", "auto")
-    return module
 
 
 def execute_function_call(
@@ -480,7 +457,7 @@ def execute_function_call(
 
     function_call_module_name = context.get("OPENAI_FUNCTION_CALL_MODULE_NAME")
     if should_execute_function_call:
-        function_call_module = import_function_call_module(function_call_module_name)
+        function_call_module = importlib.import_module(function_call_module_name)
         # Note that the model may generate invalid JSON or hallucinate parameters
         try:
             function_to_call = getattr(function_call_module, function_call["name"])

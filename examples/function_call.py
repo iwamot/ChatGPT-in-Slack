@@ -29,8 +29,3 @@ functions = [
         },
     }
 ]
-
-# You can specify the "function_call" parameter
-# function_call = "auto"  // default
-# function_call = "none"
-# function_call = {"name": "get_current_weather"}
