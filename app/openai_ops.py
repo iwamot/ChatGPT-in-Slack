@@ -1,9 +1,9 @@
 import threading
 import time
 import re
-import importlib
 import json
 from typing import List, Dict, Any, Generator, Tuple, Optional, Union
+from importlib import import_module
 
 import openai
 from openai.error import Timeout
@@ -92,7 +92,7 @@ def start_receiving_openai_response(
 ) -> Generator[OpenAIObject, Any, None]:
     functions = None
     if function_call_module_name is not None:
-        function_call_module = importlib.import_module(function_call_module_name)
+        function_call_module = import_module(function_call_module_name)
         functions = function_call_module.functions
     return openai.ChatCompletion.create(
         api_key=openai_api_key,
@@ -198,7 +198,7 @@ def consume_openai_stream_to_write_reply(
                     break
 
             function_call_module_name = context.get("OPENAI_FUNCTION_CALL_MODULE_NAME")
-            function_call_module = importlib.import_module(function_call_module_name)
+            function_call_module = import_module(function_call_module_name)
 
             # Note that the model may generate invalid JSON or hallucinate parameters
             try:
@@ -411,9 +411,7 @@ def calculate_prompt_tokens_used_by_function_call(context: BoltContext) -> int:
     global _prompt_tokens_used_by_function_call_cache
     if _prompt_tokens_used_by_function_call_cache is None:
         # As the method to calculate the number of tokens is not clear yet, actual measurement is currently used
-        module = importlib.import_module(
-            context.get("OPENAI_FUNCTION_CALL_MODULE_NAME")
-        )
+        module = import_module(context.get("OPENAI_FUNCTION_CALL_MODULE_NAME"))
 
         def create_chat_completion(functions=None):
             return openai.ChatCompletion.create(
