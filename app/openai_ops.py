@@ -127,7 +127,7 @@ def consume_openai_stream_to_write_reply(
     stream: Generator[OpenAIObject, Any, None],
     timeout_seconds: int,
     translate_markdown: bool,
-) -> Optional[str]:
+):
     start_time = time.time()
     assistant_reply: Dict[str, Union[str, Dict[str, str]]] = {
         "role": "assistant",
@@ -203,7 +203,7 @@ def consume_openai_stream_to_write_reply(
                     and f.get("name") == function_call["name"]
                     and f.get("arguments") == function_call["arguments"]
                 ):
-                    return None
+                    return
 
             function_call_module_name = context.get("OPENAI_FUNCTION_CALL_MODULE_NAME")
             function_call_module = importlib.import_module(function_call_module_name)
@@ -214,7 +214,7 @@ def consume_openai_stream_to_write_reply(
                 function_args = json.loads(function_call["arguments"])
                 function_response = function_to_call(**function_args)
             except Exception:
-                return None
+                return
 
             messages.append(
                 {
@@ -223,7 +223,30 @@ def consume_openai_stream_to_write_reply(
                     "content": function_response,
                 }
             )
-            return function_call_module_name
+            messages_within_context_window(messages, context=context)
+            sub_stream = start_receiving_openai_response(
+                openai_api_key=context.get("OPENAI_API_KEY"),
+                model=context.get("OPENAI_MODEL"),
+                temperature=context.get("OPENAI_TEMPERATURE"),
+                messages=messages,
+                user=user_id,
+                openai_api_type=context.get("OPENAI_API_TYPE"),
+                openai_api_base=context.get("OPENAI_API_BASE"),
+                openai_api_version=context.get("OPENAI_API_VERSION"),
+                openai_deployment_id=context.get("OPENAI_DEPLOYMENT_ID"),
+                function_call_module_name=function_call_module_name,
+            )
+            consume_openai_stream_to_write_reply(
+                client=client,
+                wip_reply=wip_reply,
+                context=context,
+                user_id=user_id,
+                messages=messages,
+                stream=sub_stream,
+                timeout_seconds=timeout_seconds,
+                translate_markdown=translate_markdown,
+            )
+            return
 
         assistant_reply_text = format_assistant_reply(
             assistant_reply["content"], translate_markdown
