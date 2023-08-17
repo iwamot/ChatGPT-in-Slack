@@ -90,10 +90,9 @@ def start_receiving_openai_response(
     openai_deployment_id: str,
     function_call_module_name: Optional[str],
 ) -> Generator[OpenAIObject, Any, None]:
-    functions = None
+    kwargs = {}
     if function_call_module_name is not None:
-        function_call_module = import_module(function_call_module_name)
-        functions = function_call_module.functions
+        kwargs["functions"] = import_module(function_call_module_name).functions
     return openai.ChatCompletion.create(
         api_key=openai_api_key,
         model=model,
@@ -111,7 +110,7 @@ def start_receiving_openai_response(
         api_base=openai_api_base,
         api_version=openai_api_version,
         deployment_id=openai_deployment_id,
-        **({"functions": functions} if functions is not None else {}),
+        **kwargs,
     )
 
 
@@ -177,6 +176,7 @@ def consume_openai_stream_to_write_reply(
                 if assistant_reply["content"] == "":
                     for k in function_call.keys():
                         function_call[k] += delta["function_call"].get(k, "")
+                    assistant_reply["function_call"] = function_call
 
         for t in threads:
             try:
@@ -186,21 +186,17 @@ def consume_openai_stream_to_write_reply(
                 pass
 
         if function_call["name"] != "":
-            assistant_reply["function_call"] = function_call
-
             function_call_module_name = context.get("OPENAI_FUNCTION_CALL_MODULE_NAME")
             function_call_module = import_module(function_call_module_name)
             function_to_call = getattr(function_call_module, function_call["name"])
             function_args = json.loads(function_call["arguments"])
             function_response = function_to_call(**function_args)
-            messages.append(
-                {
-                    "role": "function",
-                    "name": function_call["name"],
-                    "content": function_response,
-                }
-            )
-
+            function_message = {
+                "role": "function",
+                "name": function_call["name"],
+                "content": function_response,
+            }
+            messages.append(function_message)
             messages_within_context_window(messages, context=context)
             sub_stream = start_receiving_openai_response(
                 openai_api_key=context.get("OPENAI_API_KEY"),
