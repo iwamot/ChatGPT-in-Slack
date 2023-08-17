@@ -84,10 +84,10 @@ def start_receiving_openai_response(
     temperature: float,
     messages: List[Dict[str, Union[str, Dict[str, str]]]],
     user: str,
-    openai_api_type: Optional[str],
+    openai_api_type: str,
     openai_api_base: str,
-    openai_api_version: Optional[str],
-    openai_deployment_id: Optional[str],
+    openai_api_version: str,
+    openai_deployment_id: str,
     function_call_module_name: Optional[str],
 ) -> Generator[OpenAIObject, Any, None]:
     functions = None
