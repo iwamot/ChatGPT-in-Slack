@@ -60,9 +60,9 @@ def messages_within_context_window(
     # See also: https://platform.openai.com/docs/guides/chat/introduction
     # > total tokens must be below the model’s maximum limit (e.g., 4096 tokens for gpt-3.5-turbo-0301)
     max_context_tokens = context_length(context.get("OPENAI_MODEL")) - MAX_TOKENS - 1
-    num_context_tokens = 0  # Number of tokens in the context window just before the earliest message is deleted
     if context.get("OPENAI_FUNCTION_CALL_MODULE_NAME") is not None:
         max_context_tokens -= calculate_prompt_tokens_used_by_function_call(context)
+    num_context_tokens = 0  # Number of tokens in the context window just before the earliest message is deleted
     while (num_tokens := calculate_num_tokens(messages)) > max_context_tokens:
         removed = False
         for i, message in enumerate(messages):
@@ -190,24 +190,11 @@ def consume_openai_stream_to_write_reply(
         if function_call["name"] != "":
             assistant_reply["function_call"] = function_call
 
-            # Check for repeated function calls to prevent infinite loops
-            for message in reversed(messages[:-1]):
-                if message.get("function_call") == function_call:
-                    return
-                elif message.get("role") == "user":
-                    break
-
             function_call_module_name = context.get("OPENAI_FUNCTION_CALL_MODULE_NAME")
             function_call_module = import_module(function_call_module_name)
-
-            # Note that the model may generate invalid JSON or hallucinate parameters
-            try:
-                function_to_call = getattr(function_call_module, function_call["name"])
-                function_args = json.loads(function_call["arguments"])
-                function_response = function_to_call(**function_args)
-            except Exception:
-                return
-
+            function_to_call = getattr(function_call_module, function_call["name"])
+            function_args = json.loads(function_call["arguments"])
+            function_response = function_to_call(**function_args)
             messages.append(
                 {
                     "role": "function",
@@ -215,6 +202,7 @@ def consume_openai_stream_to_write_reply(
                     "content": function_response,
                 }
             )
+
             messages_within_context_window(messages, context=context)
             sub_stream = start_receiving_openai_response(
                 openai_api_key=context.get("OPENAI_API_KEY"),
@@ -235,7 +223,7 @@ def consume_openai_stream_to_write_reply(
                 user_id=user_id,
                 messages=messages,
                 stream=sub_stream,
-                timeout_seconds=timeout_seconds,
+                timeout_seconds=int(timeout_seconds - (time.time() - start_time)),
                 translate_markdown=translate_markdown,
             )
             return
